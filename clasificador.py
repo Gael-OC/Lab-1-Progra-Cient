@@ -1,22 +1,23 @@
 import os
 import math
+import re
+from nltk.corpus import stopwords
 
 def procesarTexto(texto):
     texto = texto.lower()
-
-    textoLimpio = ""
-    for caracter in texto:
-        if 'a' <= caracter <= 'z' or caracter == ' ':
-            textoLimpio += caracter
-            
-    #devuelve una lista de palabras del texto limpio
-    return textoLimpio.split()
+    
+    #usa regex para eliminar todo lo que no sea letra o espacio
+    texto = re.sub(r'[^a-z\s]', ' ', texto)
+    tokens = texto.split()
+    
+    #eliminamos stopwords
+    stopWords = set(stopwords.words('english'))
+    tokensFiltrados = [palabra for palabra in tokens if palabra not in stopWords]
+    
+    return tokensFiltrados
 
 def cargarDocumentos(rutaBase):
-    #crea un diccionario para guardar los textos procesados
-    #la clave será "categoria/archivo.txt" y el valor la lista de palabras
     documentos = {}
-    
     for categoria in os.listdir(rutaBase):
         rutaCategoria = os.path.join(rutaBase, categoria)
         if os.path.isdir(rutaCategoria):
@@ -29,74 +30,58 @@ def cargarDocumentos(rutaBase):
     return documentos
 
 def calcularTf(listaPalabras):
-    #calcula la frecuencia de término (TF) para un documento
     totalPalabras = len(listaPalabras)
     if totalPalabras == 0:
         return {}
     
-    #cuenta cuántas veces aparece cada palabra
     conteoPalabras = {}
     for palabra in listaPalabras:
         conteoPalabras[palabra] = conteoPalabras.get(palabra, 0) + 1
     
-    #aplica la fórmula TF: (conteo de palabra) / (total de palabras)
     tf = {palabra: conteo / totalPalabras for palabra, conteo in conteoPalabras.items()}
     return tf
 
 def calcularIdf(todosLosDocumentos):
-    #calcula la frecuencia inversa de documento (IDF) para todo el corpus
     totalDocumentos = len(todosLosDocumentos)
-    df = {} #diccionario para guardar el Document Frequency (DF) de cada palabra
+    df = {} 
     
-    #recorre cada documento para contar en cuántos aparece cada palabra
     for listaPalabras in todosLosDocumentos.values():
         palabrasUnicas = set(listaPalabras)
         for palabra in palabrasUnicas:
             df[palabra] = df.get(palabra, 0) + 1
             
-    #aplica la fórmula IDF: log(total_documentos / (1 + df de la palabra))
     idf = {palabra: math.log(totalDocumentos / (1 + conteo)) for palabra, conteo in df.items()}
     return idf
 
 def calcularSimilitud(vectorA, vectorB):
-    #calcula la similitud del coseno entre dos vectores TF-IDF
     palabrasComunes = set(vectorA.keys()) & set(vectorB.keys())
-    
-    #producto punto: suma de las multiplicaciones de los pesos de palabras comunes
     productoPunto = sum(vectorA[p] * vectorB[p] for p in palabrasComunes)
-    
-    #magnitud del vector A: raíz cuadrada de la suma de sus pesos al cuadrado
     magnitudA = math.sqrt(sum(v**2 for v in vectorA.values()))
-    
-    #magnitud del vector B
     magnitudB = math.sqrt(sum(v**2 for v in vectorB.values()))
     
-    #evita la división por cero si algún vector está vacío
     if magnitudA == 0 or magnitudB == 0:
         return 0.0
         
     return productoPunto / (magnitudA * magnitudB)
 
+#definimos el número K de vecinos
+kVecinos = 5
 
-#carga todos los documentos de la carpeta 'dataset'
 documentosBase = cargarDocumentos('dataset')
-
-#calcula el IDF una sola vez para todo el conjunto de datos
 idfGeneral = calcularIdf(documentosBase)
 
-#calcula y guarda el vector TF-IDF para cada documento de la base
 vectoresBase = {}
 for idDoc, palabras in documentosBase.items():
     tfDoc = calcularTf(palabras)
     vectoresBase[idDoc] = {p: tf * idfGeneral.get(p, 0) for p, tf in tfDoc.items()}
 
-
+#textos de consulta para probar
 consultas = [
-    "NASA is planning a new mission to the moon and Mars.",
-    "The hockey team won the finals in overtime.",
-    "This new medicine could help fight cancer cells.",
-    "This new GPU can render amazing 3D graphics.",
-    "The new MacBook Air with the M3 processor has two Thunderbolt ports."
+    "The new M3 chip in the MacBook Pro is very fast.",
+    "The pitcher for the Yankees had a great game.",
+    "This new electric motorcycle has a long range.",
+    "I need a new resistor and capacitor for my circuit board",
+    "My old car needs a new transmission and brakes."
 ]
 
 for i, textoConsulta in enumerate(consultas):
@@ -108,17 +93,29 @@ for i, textoConsulta in enumerate(consultas):
     tfConsulta = calcularTf(palabrasConsulta)
     vectorConsulta = {p: tf * idfGeneral.get(p, 0) for p, tf in tfConsulta.items()}
     
-    #compara la consulta con todos los documentos de la base
-    mejorSimilitud = -1.0
-    docMasSimilar = ""
+    #calcula similitud y ordena resultados
+    listaSimilitudes = []
     for idDoc, vectorDoc in vectoresBase.items():
         similitud = calcularSimilitud(vectorConsulta, vectorDoc)
-        if similitud > mejorSimilitud:
-            mejorSimilitud = similitud
-            docMasSimilar = idDoc
-            
-    #signa la categoría del documento más parecido
-    categoria = docMasSimilar.split('/')[0]
+        categoriaDoc = idDoc.split('/')[0]
+        listaSimilitudes.append((similitud, categoriaDoc))
+        
+    #ordena la lista de mayor a menor similitud
+    listaSimilitudes.sort(key=lambda x: x[0], reverse=True)
     
-    print(f"Categoría asignada: {categoria}")
-    print(f"(Documento más similar: '{docMasSimilar}', Similitud: {mejorSimilitud:.4f})\n")
+    #selecciona los K vecinos relevantes
+    vecinosCercanos = listaSimilitudes[:kVecinos]
+    
+    #signa categoría por votación mayoritaria
+    votos = {}
+    for (sim, categoria) in vecinosCercanos:
+        votos[categoria] = votos.get(categoria, 0) + 1
+        
+    #busca la categoría con más votos
+    categoriaAsignada = max(votos, key=votos.get)
+    
+    print(f"Categoría asignada: {categoriaAsignada} (K={kVecinos})")
+    print("Vecinos encontrados:")
+    for (sim, categoria) in vecinosCercanos:
+        print(f"  - Categoría: {categoria}, Similitud: {sim:.4f}")
+    print("\n")

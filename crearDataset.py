@@ -1,7 +1,7 @@
 import os
 from sklearn.datasets import fetch_20newsgroups
 
-# Categorías seleccionadas
+#categorias seleccionadas
 categories = [
     "rec.autos",
     "rec.motorcycles",
@@ -10,7 +10,6 @@ categories = [
     "comp.sys.mac.hardware"
 ]
 
-# Crear carpeta raíz donde guardaremos todo
 output_dir = "dataset"
 os.makedirs(output_dir, exist_ok=True)
 
@@ -19,10 +18,10 @@ dataset = fetch_20newsgroups(
     categories=categories,
     shuffle=True,
     random_state=42,
-    remove=()  # Puede probar con ("headers", "footers", "quotes") para quitar algunos fragmentos de los textos
+    remove=(("headers", "footers", "quotes")) 
 )
 
-# Guardar cada documento como txt en su carpeta
+#guardar cada documento
 for i, text in enumerate(dataset.data):
     label = dataset.target_names[dataset.target[i]]
     folder = os.path.join(output_dir, label)
